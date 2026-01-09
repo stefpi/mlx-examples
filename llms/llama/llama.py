@@ -339,7 +339,11 @@ def load_model(model_path):
         quantization = config.pop("quantization", None)
     model = Llama(ModelArgs(**config))
     if quantization is not None:
-        nn.quantize(model, **quantization)
+        class_predicate = (
+            lambda p, m: isinstance(m, (nn.Linear, nn.Embedding))
+            and f"{p}.scales" in weights
+        )
+        nn.quantize(model, **quantization, class_predicate=class_predicate)
     model.update(tree_unflatten(list(weights.items())))
     tokenizer = SentencePieceProcessor(model_file=str(model_path / "tokenizer.model"))
     return model, tokenizer

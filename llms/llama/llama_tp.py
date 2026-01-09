@@ -83,8 +83,8 @@ class Attention(nn.Module):
             key_cache, value_cache = cache
             queries = self.rope(queries, offset=key_cache.shape[2])
             keys = self.rope(keys, offset=key_cache.shape[2])
-            keys = mx.concatenate([key_cache, keys], axis=2)
-            values = mx.concatenate([value_cache, values], axis=2)
+            keys = mx.concatenate([key_cache, keys], axis=2).astype(mx.float16)
+            values = mx.concatenate([value_cache, values], axis=2).astype(mx.float16)
         else:
             queries = self.rope(queries)
             keys = self.rope(keys)
@@ -102,8 +102,8 @@ class FeedForward(nn.Module):
         super().__init__()
 
         self.w1 = nn.QuantizedAllToShardedLinear(args.dim, args.hidden_dim, bias=False, group=world)
-        self.w2 = nn.QuantizedAllToShardedLinear(args.hidden_dim, args.dim, bias=False, group=world)
-        self.w3 = nn.QuantizedShardedToAllLinear(args.dim, args.hidden_dim, bias=False, group=world)
+        self.w2 = nn.QuantizedShardedToAllLinear(args.hidden_dim, args.dim, bias=False, group=world)
+        self.w3 = nn.QuantizedAllToShardedLinear(args.dim, args.hidden_dim, bias=False, group=world)
 
     def __call__(self, x) -> mx.array:
         return self.w2(nn.silu(self.w1(x)) * self.w3(x))
