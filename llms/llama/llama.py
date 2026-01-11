@@ -16,6 +16,7 @@ from sentencepiece import SentencePieceProcessor
 world = mx.distributed.init()
 rank = world.rank()
 
+
 @dataclass
 class ModelArgs:
     dim: int
@@ -55,10 +56,18 @@ class Attention(nn.Module):
         self.n_kv_heads = self.n_kv_heads // group.size()
         self.repeats = self.n_heads // self.n_kv_heads
 
-        self.wq = nn.layers.distributed.shard_linear(self.wq, "all-to-sharded", group=group)
-        self.wk = nn.layers.distributed.shard_linear(self.wk, "all-to-sharded", group=group)
-        self.wv = nn.layers.distributed.shard_linear(self.wv, "all-to-sharded", group=group)
-        self.wo = nn.layers.distributed.shard_linear(self.wo, "sharded-to-all", group=group)
+        self.wq = nn.layers.distributed.shard_linear(
+            self.wq, "all-to-sharded", group=group
+        )
+        self.wk = nn.layers.distributed.shard_linear(
+            self.wk, "all-to-sharded", group=group
+        )
+        self.wv = nn.layers.distributed.shard_linear(
+            self.wv, "all-to-sharded", group=group
+        )
+        self.wo = nn.layers.distributed.shard_linear(
+            self.wo, "sharded-to-all", group=group
+        )
 
     def __call__(
         self,
@@ -108,9 +117,15 @@ class FeedForward(nn.Module):
         self.w3 = nn.Linear(args.dim, args.hidden_dim, bias=False)
 
     def shard(self, group: mx.distributed.Group):
-        self.w1 = nn.layers.distributed.shard_linear(self.w1, "all-to-sharded", group=group)
-        self.w2 = nn.layers.distributed.shard_linear(self.w2, "sharded-to-all", group=group)
-        self.w3 = nn.layers.distributed.shard_linear(self.w3, "all-to-sharded", group=group)
+        self.w1 = nn.layers.distributed.shard_linear(
+            self.w1, "all-to-sharded", group=group
+        )
+        self.w2 = nn.layers.distributed.shard_linear(
+            self.w2, "sharded-to-all", group=group
+        )
+        self.w3 = nn.layers.distributed.shard_linear(
+            self.w3, "all-to-sharded", group=group
+        )
 
     def __call__(self, x) -> mx.array:
         return self.w2(nn.silu(self.w1(x)) * self.w3(x))
@@ -213,10 +228,13 @@ class Llama(nn.Module):
 
 
 _builtin_print = print
-def print(*args, sep=' ', end='\n', file=None, flush=False):
+
+
+def print(*args, sep=" ", end="\n", file=None, flush=False):
     """Overwrite the print statement to only print to terminal on the rank 0
     device so that model output is not doubled."""
-    if rank == 0: _builtin_print(*args, sep=sep, end=end, file=file, flush=flush)
+    if rank == 0:
+        _builtin_print(*args, sep=sep, end=end, file=file, flush=flush)
 
 
 def tic():
@@ -229,7 +247,8 @@ def toc(msg, start):
 
 
 def generate(args):
-    if rank == 0: input("Press enter to start generation")
+    if rank == 0:
+        input("Press enter to start generation")
     print("------")
     print(args.prompt)
     x = mx.array([[tokenizer.bos_id()] + tokenizer.encode(args.prompt)])
@@ -370,14 +389,15 @@ def load_model(model_path):
         nn.quantize(model, **quantization, class_predicate=class_predicate)
     model.update(tree_unflatten(list(weights.items())))
     tokenizer = SentencePieceProcessor(model_file=str(model_path / "tokenizer.model"))
-    
+
     if world.size() > 1:
         # convert Linear layers in Transformer/FFN to appropriate Sharded Layers
         for layer in model.layers:
             layer.attention.shard(group=world)
             layer.feed_forward.shard(group=world)
-    
+
     return model, tokenizer
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Llama inference script")
