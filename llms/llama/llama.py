@@ -10,6 +10,7 @@ from typing import Optional, Tuple
 
 import mlx.core as mx
 import mlx.nn as nn
+from mlx.nn.layers.distributed import shard_linear
 from mlx.utils import tree_unflatten
 from sentencepiece import SentencePieceProcessor
 
@@ -56,18 +57,10 @@ class Attention(nn.Module):
         self.n_kv_heads = self.n_kv_heads // group.size()
         self.repeats = self.n_heads // self.n_kv_heads
 
-        self.wq = nn.layers.distributed.shard_linear(
-            self.wq, "all-to-sharded", group=group
-        )
-        self.wk = nn.layers.distributed.shard_linear(
-            self.wk, "all-to-sharded", group=group
-        )
-        self.wv = nn.layers.distributed.shard_linear(
-            self.wv, "all-to-sharded", group=group
-        )
-        self.wo = nn.layers.distributed.shard_linear(
-            self.wo, "sharded-to-all", group=group
-        )
+        self.wq = shard_linear(self.wq, "all-to-sharded", group=group)
+        self.wk = shard_linear(self.wk, "all-to-sharded", group=group)
+        self.wv = shard_linear(self.wv, "all-to-sharded", group=group)
+        self.wo = shard_linear(self.wo, "sharded-to-all", group=group)
 
     def __call__(
         self,
@@ -117,15 +110,9 @@ class FeedForward(nn.Module):
         self.w3 = nn.Linear(args.dim, args.hidden_dim, bias=False)
 
     def shard(self, group: mx.distributed.Group):
-        self.w1 = nn.layers.distributed.shard_linear(
-            self.w1, "all-to-sharded", group=group
-        )
-        self.w2 = nn.layers.distributed.shard_linear(
-            self.w2, "sharded-to-all", group=group
-        )
-        self.w3 = nn.layers.distributed.shard_linear(
-            self.w3, "all-to-sharded", group=group
-        )
+        self.w1 = shard_linear(self.w1, "all-to-sharded", group=group)
+        self.w2 = shard_linear(self.w2, "sharded-to-all", group=group)
+        self.w3 = shard_linear(self.w3, "all-to-sharded", group=group)
 
     def __call__(self, x) -> mx.array:
         return self.w2(nn.silu(self.w1(x)) * self.w3(x))
