@@ -55,7 +55,6 @@ class Attention(nn.Module):
     def shard(self, group: mx.distributed.Group):
         self.n_heads = self.n_heads // group.size()
         self.n_kv_heads = self.n_kv_heads // group.size()
-        self.repeats = self.n_heads // self.n_kv_heads
 
         self.wq = shard_linear(self.wq, "all-to-sharded", group=group)
         self.wk = shard_linear(self.wk, "all-to-sharded", group=group)
